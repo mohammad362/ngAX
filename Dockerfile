@@ -1,20 +1,31 @@
-# Use the official Golang image as the base image
-FROM golang:latest
-
-RUN apt-get update && \
-    apt-get install -y libvips-dev
+# Use the official Golang Alpine image as the base image
+FROM golang:alpine
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the Go source code and other necessary files to the container
+# Install libvips and its dependencies
+RUN apk --no-cache add build-base \
+    && apk --no-cache add vips-dev \
+    && apk --no-cache add gcc \
+    && apk --no-cache add g++ \
+    && apk --no-cache add libc6-compat
+
+# Copy the go.mod and go.sum files to download dependencies
+# This is done before copying the source code to leverage Docker cache
+COPY go.mod go.sum ./
+
+# Download the dependencies
+RUN go mod download
+
+# Copy the rest of the source code
 COPY . .
 
-# Build the Go application
+# Build the application
 RUN go build -o main .
 
-# Expose the port that your application listens on
+# Expose the port the application runs on
 EXPOSE 8080
 
-# Define the command to run your application
+# Command to run the executable
 CMD ["./main"]
