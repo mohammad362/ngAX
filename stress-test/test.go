@@ -1,0 +1,54 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"sync"
+)
+
+const (
+	baseURL       = "http://localhost:8080/"                                                                                                                                                                         // Change this to your server's URL
+	testImagePath = "thumbnail/E4I93OEeXKPK/YdHYY4gWkVznG6NnGPWpTg96qHB4I0VpFrRtpPfGEOzqKFXlEXq2PcvD-9C72vUX9ULcwlXt6ht7JMG7f2xXElgNtaCd5wQzvaKqYPOnH77SpDXtPsNSLA,,/%D9%BE%D8%B2%D8%B4%DA%A9%DB%8C%D8%A7%D9%86.jpg" // Replace with a valid image path
+	numRequests   = 10000                                                                                                                                                                                            // Total number of requests to send
+	concurrency   = 150                                                                                                                                                                                              // Number of concurrent requests
+)
+
+func main() {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, concurrency) // Semaphore for limiting concurrency
+
+	for i := 0; i < numRequests; i++ {
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			// Append a unique query parameter to bypass the cache
+			imageURL := fmt.Sprintf("%s%s?nocache=%d", baseURL, testImagePath, i)
+			fmt.Printf("%s", imageURL)
+			// Create a new HTTP request
+			req, err := http.NewRequest("GET", imageURL, nil)
+			if err != nil {
+				fmt.Printf("Request %d failed to create: %s\n", i, err)
+				<-sem
+				return
+			}
+
+			// Set the Host header to match the expected host from the whitelist
+			req.Host = "cdn.ilna.ir" // Replace with the actual whitelisted host
+
+			// Send the request
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				fmt.Printf("Request %d failed: %s\n", i, err)
+				<-sem
+				return
+			}
+			defer resp.Body.Close()
+			fmt.Printf("Request %d completed with status code: %d\n", i, resp.StatusCode)
+			<-sem
+		}(i)
+	}
+
+	wg.Wait()
+	fmt.Println("Stress test completed.")
+}
