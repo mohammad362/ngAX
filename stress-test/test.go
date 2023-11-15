@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	baseURL       = "http://localhost:8080/"                                                                                                                                                                         // Change this to your server's URL
-	testImagePath = "thumbnail/E4I93OEeXKPK/YdHYY4gWkVznG6NnGPWpTg96qHB4I0VpFrRtpPfGEOzqKFXlEXq2PcvD-9C72vUX9ULcwlXt6ht7JMG7f2xXElgNtaCd5wQzvaKqYPOnH77SpDXtPsNSLA,,/%D9%BE%D8%B2%D8%B4%DA%A9%DB%8C%D8%A7%D9%86.jpg" // Replace with a valid image path
-	numRequests   = 10000                                                                                                                                                                                            // Total number of requests to send
-	concurrency   = 150                                                                                                                                                                                              // Number of concurrent requests
+	baseURL       = "http://localhost:8080/" // Change this to your server's URL
+	testImagePath = "image_path"             // Replace with a valid image path
+	numRequests   = 10000                    // Total number of requests to send
+	concurrency   = 150                      // Number of concurrent requests
 )
 
 func main() {
