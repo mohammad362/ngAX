@@ -9,4 +9,6 @@ services:
     environment:
       - GIN_MODE=release
     restart: on-failure
+    volumes:
+      - ./config.yaml:/app/config.yaml
 
