@@ -11,4 +11,10 @@ services:
     restart: on-failure
     volumes:
       - ./config.yaml:/app/config.yaml
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 10m
+        max-file: "1"
+        
 
