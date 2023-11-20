@@ -31,4 +31,4 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ghcr.io/${{ github.repository }}/ngax:${{ steps.prep.outputs.tag }}
+        tags: ghcr.io/${{ github.repository }}/ngax
