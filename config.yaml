@@ -25,4 +25,7 @@ concurrency:
 # HTTP Client Settings
 http_client:
   timeout_seconds: 10               # HTTP client timeout in seconds
-
+  keep_alive: 30
+  TLS_handshake_timeout: 10
+  response_header_timeout: 10
+  expect_continue_timeout: 1

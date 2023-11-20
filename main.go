@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -38,7 +39,11 @@ type Config struct {
 		RequestTimeoutSeconds int `mapstructure:"request_timeout_seconds"`
 	} `mapstructure:"concurrency"`
 	HTTPClient struct {
-		TimeoutSeconds int `mapstructure:"timeout_seconds"`
+		TimeoutSeconds        int `mapstructure:"timeout_seconds"`
+		KeepAlive             int `mapstructure:"keep_alive"`
+		TLSHandshakeTimeout   int `mapstructure:"TLS_handshake_timeout"`
+		ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
+		ExpectContinueTimeout int `mapstructure:"expect_continue_timeout"`
 	} `mapstructure:"http_client"`
 	AllowedHosts []string `mapstructure:"allowed_hosts"`
 }
@@ -75,8 +80,18 @@ func init() {
 	logger.Formatter = &logrus.JSONFormatter{}
 
 	httpClient = &http.Client{
-		Timeout: time.Second * time.Duration(config.HTTPClient.TimeoutSeconds),
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   time.Duration(config.HTTPClient.TimeoutSeconds) * time.Second,
+				KeepAlive: time.Duration(config.HTTPClient.KeepAlive) * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   time.Duration(config.HTTPClient.TLSHandshakeTimeout) * time.Second,
+			ResponseHeaderTimeout: time.Duration(config.HTTPClient.ResponseHeaderTimeout) * time.Second,
+			ExpectContinueTimeout: time.Duration(config.HTTPClient.ExpectContinueTimeout) * time.Second,
+		},
+		// Timeout: time.Second * time.Duration(config.HTTPClient.TimeoutSeconds),
 	}
+	logger.Info("Timeout:", time.Duration(config.HTTPClient.TimeoutSeconds))
 
 	semaphore = make(chan struct{}, config.Concurrency.MaxGoroutines)
 }
