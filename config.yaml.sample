@@ -1,8 +1,8 @@
 # Configuration file for the image processing service
 
 allowed_hosts:
-  - "pelikan.media"
-  - "cdn.mahshow.com"
+  - "example.com"
+  - "sub.exmaple1.com"
 
 # WebP Image Processing Settings
 webp:

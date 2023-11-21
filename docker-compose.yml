@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   image_processing:
-    image: ghcr.io/mohammad362/ngax:1.0
+    image: ghcr.io/mohammad362/ngax/ngax
     container_name: image_processing
     ports:
       - "8080:8080"

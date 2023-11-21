@@ -170,12 +170,20 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 func convertToWebP(imageURL string, w http.ResponseWriter) {
 	resp, err := httpClient.Get(imageURL)
 	if err != nil {
-		errMsg := fmt.Sprintf("Error fetching image: %v", err)
-		logger.WithFields(logrus.Fields{"url": imageURL, "error": errMsg}).Error()
-		http.Error(w, errMsg, http.StatusInternalServerError)
+		// Log the error with detailed information
+		logger.WithFields(logrus.Fields{"url": imageURL, "error": err.Error()}).Error("Error fetching image")
+		http.Error(w, fmt.Sprintf("Error fetching image: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
+
+	// Check if the response from the remote host is successful
+	if resp.StatusCode != http.StatusOK {
+		// Log the HTTP error with the status code and status
+		logger.WithFields(logrus.Fields{"url": imageURL, "status": resp.Status}).Error("HTTP error from remote host")
+		http.Error(w, fmt.Sprintf("HTTP error from remote host: %s", resp.Status), resp.StatusCode)
+		return
+	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if !isSupportedImageFormat(contentType) {
