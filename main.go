@@ -48,6 +48,11 @@ type Config struct {
 	AllowedHosts []string `mapstructure:"allowed_hosts"`
 }
 
+type ImageResult struct {
+	Data  []byte
+	Error error
+}
+
 var (
 	config     Config
 	imgCache   *lru.Cache
@@ -94,7 +99,6 @@ func init() {
 		},
 		Timeout: time.Second * time.Duration(config.HTTPClient.TimeoutSeconds),
 	}
-	logger.Info("Timeout:", time.Duration(config.HTTPClient.TimeoutSeconds))
 
 	semaphore = make(chan struct{}, config.Concurrency.MaxGoroutines)
 }
@@ -124,13 +128,9 @@ func main() {
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
-	// Get the host from the request header
 	remoteHost := r.Host
 
 	if remoteHost == "" {
-		// Handle the case where no host is provided, for example:
-		// remoteHost = "default-host.com"
-		// Or return an error response
 		http.Error(w, "Host header is missing", http.StatusBadRequest)
 		return
 	}
@@ -141,124 +141,94 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build the imageURL using the host from the request header
 	imageURL := "https://" + remoteHost + r.URL.Path
 
 	nocacheHeader := r.Header.Get(config.Cache.NoCacheHeader)
 	if config.Cache.CacheEnabled && nocacheHeader != "true" {
-		// Check the cache first
 		if cachedImage, found := imgCache.Get(imageURL); found {
-			// Log cache miss
 			logger.Info("Cache hit for URL: ", imageURL)
-
-			// Serve the cached image
-			w.Header().Set("Content-Type", "image/webp")
-			w.Header().Set("Content-Length", strconv.Itoa(len(cachedImage.([]byte))))
-			w.Write(cachedImage.([]byte))
+			serveCachedImage(w, cachedImage)
 			return
 		}
 	}
 
-	// Log cache miss
 	logger.Info("Cache miss for URL: ", imageURL)
 
 	semaphoreWaitStart := time.Now()
 	logger.Info("Waiting for semaphore slot")
-
-	// Acquire a slot in the semaphore to limit concurrency
 	semaphore <- struct{}{}
 	defer func() { <-semaphore }()
-
 	semaphoreWaitDuration := time.Since(semaphoreWaitStart)
 	logger.WithFields(logrus.Fields{
 		"semaphoreWaitDuration": semaphoreWaitDuration,
 	}).Info("Semaphore slot acquired")
 
-	requestStartTime := time.Now()
+	resultChan := make(chan ImageResult)
+	go processImageAsync(imageURL, resultChan)
 
-	defer func() {
-		<-semaphore
-		requestDuration := time.Since(requestStartTime)
-		logger.WithFields(logrus.Fields{
-			"requestDuration":       requestDuration,
-			"semaphoreWaitDuration": semaphoreWaitDuration,
-		}).Info("Request processed and semaphore slot released")
-	}()
+	result := <-resultChan
+	if result.Error != nil {
+		logger.WithFields(logrus.Fields{"error": result.Error.Error()}).Error("Error processing image")
+		http.Error(w, fmt.Sprintf("Error processing image: %v", result.Error), http.StatusInternalServerError)
+		return
+	}
 
-	// Convert the image to WebP format
-	convertToWebP(imageURL, w)
+	w.Header().Set("Content-Type", "image/webp")
+	w.Header().Set("Content-Length", strconv.Itoa(len(result.Data)))
+	w.Write(result.Data)
 }
 
-func convertToWebP(imageURL string, w http.ResponseWriter) {
-	fetchStartTime := time.Now()
-
+func processImageAsync(imageURL string, resultChan chan ImageResult) {
 	resp, err := httpClient.Get(imageURL)
 	if err != nil {
-		// Log the error with detailed information
-		logger.WithFields(logrus.Fields{"url": imageURL, "error": err.Error()}).Error("Error fetching image")
-		http.Error(w, fmt.Sprintf("Error fetching image: %v", err), http.StatusInternalServerError)
+		resultChan <- ImageResult{Error: err}
 		return
 	}
 	defer resp.Body.Close()
 
-	// Check if the response from the remote host is successful
 	if resp.StatusCode != http.StatusOK {
-		// Log the HTTP error with the status code and status
-		logger.WithFields(logrus.Fields{"url": imageURL, "status": resp.Status}).Error("HTTP error from remote host")
-		http.Error(w, fmt.Sprintf("HTTP error from remote host: %s", resp.Status), resp.StatusCode)
+		resultChan <- ImageResult{Error: fmt.Errorf("HTTP error from remote host: %s", resp.Status)}
 		return
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if !isSupportedImageFormat(contentType) {
-		errMsg := "Unsupported image format"
-		logger.WithFields(logrus.Fields{"contentType": contentType, "error": errMsg}).Error()
-		http.Error(w, errMsg, http.StatusBadRequest)
+		resultChan <- ImageResult{Error: fmt.Errorf("Unsupported image format")}
 		return
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		errMsg := fmt.Sprintf("Error reading image body: %v", err)
-		logger.WithFields(logrus.Fields{"error": errMsg}).Error()
-		http.Error(w, errMsg, http.StatusInternalServerError)
+		resultChan <- ImageResult{Error: fmt.Errorf("Error reading image body: %v", err)}
 		return
 	}
 
-	fetchDuration := time.Since(fetchStartTime)
-	logger.WithFields(logrus.Fields{"fetchDuration": fetchDuration}).Info("Image fetched")
-
-	processStartTime := time.Now()
-
 	options := bimg.Options{
-		Quality: config.WebP.Quality,
-		// Assume Lossless is a valid field; remove or modify if not
+		Quality:  config.WebP.Quality,
 		Lossless: config.WebP.Lossless,
-		// Removed NearLossless and OutputFormat as they might not be valid
-		Type: bimg.WEBP,
+		Type:     bimg.WEBP,
 	}
 
 	newImage, err := bimg.NewImage(body).Process(options)
 	if err != nil {
-		errMsg := fmt.Sprintf("Error converting image: %v", err)
-		logger.WithFields(logrus.Fields{"error": errMsg}).Error()
-		http.Error(w, errMsg, http.StatusInternalServerError)
+		resultChan <- ImageResult{Error: fmt.Errorf("Error converting image: %v", err)}
 		return
 	}
 
-	compressionRate := float64(len(newImage)) / float64(len(body)) * 100
-	processDuration := time.Since(processStartTime)
-	logger.WithFields(logrus.Fields{
-		"processDuration":  processDuration,
-		"fetchDuration":    fetchDuration,
-		"compression_rate": fmt.Sprintf("%.2f%%", compressionRate),
-	}).Info("Image processed and served")
-
 	imgCache.Add(imageURL, newImage)
 
-	w.Header().Set("Content-Type", "image/webp")
-	w.Header().Set("Content-Length", strconv.Itoa(len(newImage)))
-	w.Write(newImage)
+	resultChan <- ImageResult{Data: newImage}
+}
+
+func serveCachedImage(w http.ResponseWriter, cachedImageData interface{}) {
+	if imageData, ok := cachedImageData.([]byte); ok {
+		w.Header().Set("Content-Type", "image/webp")
+		w.Header().Set("Content-Length", strconv.Itoa(len(imageData)))
+		w.Write(imageData)
+	} else {
+		logger.Error("Invalid data type found in cache")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func isSupportedImageFormat(contentType string) bool {
@@ -293,7 +263,6 @@ func gracefulShutdown(srv *http.Server) {
 	logger.Info("Server gracefully stopped")
 }
 
-// Helper function to check if a host is in the allowed list
 func isAllowedHost(host string) bool {
 	for _, allowedHost := range config.AllowedHosts {
 		if host == allowedHost {
