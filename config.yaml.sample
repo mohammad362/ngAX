@@ -19,13 +19,14 @@ cache:
 
 # Concurrency Settings
 concurrency:
-  max_goroutines: 10                # Maximum number of goroutines
-  request_timeout_seconds: 30       # Request timeout in seconds
+  max_goroutines: 500                # Maximum number of goroutines
 
 # HTTP Client Settings
 http_client:
-  timeout_seconds: 30               # HTTP client timeout in seconds
+  timeout_seconds: 40               # HTTP client timeout in seconds
+  dial_timeout_seconds: 5               # HTTP client timeout in seconds
   keep_alive: 30
-  TLS_handshake_timeout: 30
+  TLS_handshake_timeout: 10
   response_header_timeout: 30
   expect_continue_timeout: 1
+  idle_conn_timeout: 90

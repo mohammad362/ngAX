@@ -35,11 +35,11 @@ type Config struct {
 		NoCacheHeader          string `mapstructure:"nocache_header"`
 	} `mapstructure:"cache"`
 	Concurrency struct {
-		MaxGoroutines         int `mapstructure:"max_goroutines"`
-		RequestTimeoutSeconds int `mapstructure:"request_timeout_seconds"`
+		MaxGoroutines int `mapstructure:"max_goroutines"`
 	} `mapstructure:"concurrency"`
 	HTTPClient struct {
 		TimeoutSeconds        int `mapstructure:"timeout_seconds"`
+		DialTimeoutSeconds    int `mapstructure:"dial_timeout_seconds"`
 		KeepAlive             int `mapstructure:"keep_alive"`
 		TLSHandshakeTimeout   int `mapstructure:"TLS_handshake_timeout"`
 		ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -82,14 +82,17 @@ func init() {
 	httpClient = &http.Client{
 		Transport: &http.Transport{
 			Dial: (&net.Dialer{
-				Timeout:   time.Duration(config.HTTPClient.TimeoutSeconds) * time.Second,
+				Timeout:   time.Duration(config.HTTPClient.DialTimeoutSeconds) * time.Second,
 				KeepAlive: time.Duration(config.HTTPClient.KeepAlive) * time.Second,
 			}).Dial,
 			TLSHandshakeTimeout:   time.Duration(config.HTTPClient.TLSHandshakeTimeout) * time.Second,
 			ResponseHeaderTimeout: time.Duration(config.HTTPClient.ResponseHeaderTimeout) * time.Second,
 			ExpectContinueTimeout: time.Duration(config.HTTPClient.ExpectContinueTimeout) * time.Second,
+			MaxConnsPerHost:       0,
+			MaxIdleConnsPerHost:   0,
+			MaxIdleConns:          100,
 		},
-		// Timeout: time.Second * time.Duration(config.HTTPClient.TimeoutSeconds),
+		Timeout: time.Second * time.Duration(config.HTTPClient.TimeoutSeconds),
 	}
 	logger.Info("Timeout:", time.Duration(config.HTTPClient.TimeoutSeconds))
 
@@ -159,15 +162,36 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Log cache miss
 	logger.Info("Cache miss for URL: ", imageURL)
 
+	semaphoreWaitStart := time.Now()
+	logger.Info("Waiting for semaphore slot")
+
 	// Acquire a slot in the semaphore to limit concurrency
 	semaphore <- struct{}{}
 	defer func() { <-semaphore }()
+
+	semaphoreWaitDuration := time.Since(semaphoreWaitStart)
+	logger.WithFields(logrus.Fields{
+		"semaphoreWaitDuration": semaphoreWaitDuration,
+	}).Info("Semaphore slot acquired")
+
+	requestStartTime := time.Now()
+
+	defer func() {
+		<-semaphore
+		requestDuration := time.Since(requestStartTime)
+		logger.WithFields(logrus.Fields{
+			"requestDuration":       requestDuration,
+			"semaphoreWaitDuration": semaphoreWaitDuration,
+		}).Info("Request processed and semaphore slot released")
+	}()
 
 	// Convert the image to WebP format
 	convertToWebP(imageURL, w)
 }
 
 func convertToWebP(imageURL string, w http.ResponseWriter) {
+	fetchStartTime := time.Now()
+
 	resp, err := httpClient.Get(imageURL)
 	if err != nil {
 		// Log the error with detailed information
@@ -201,6 +225,11 @@ func convertToWebP(imageURL string, w http.ResponseWriter) {
 		return
 	}
 
+	fetchDuration := time.Since(fetchStartTime)
+	logger.WithFields(logrus.Fields{"fetchDuration": fetchDuration}).Info("Image fetched")
+
+	processStartTime := time.Now()
+
 	options := bimg.Options{
 		Quality: config.WebP.Quality,
 		// Assume Lossless is a valid field; remove or modify if not
@@ -218,9 +247,12 @@ func convertToWebP(imageURL string, w http.ResponseWriter) {
 	}
 
 	compressionRate := float64(len(newImage)) / float64(len(body)) * 100
+	processDuration := time.Since(processStartTime)
 	logger.WithFields(logrus.Fields{
+		"processDuration":  processDuration,
+		"fetchDuration":    fetchDuration,
 		"compression_rate": fmt.Sprintf("%.2f%%", compressionRate),
-	}).Info("Image compression completed")
+	}).Info("Image processed and served")
 
 	imgCache.Add(imageURL, newImage)
 
