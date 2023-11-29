@@ -141,7 +141,10 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	imageURL := "https://" + remoteHost + r.URL.Path
+	cacheCount := imgCache.Len()
+	logger.Info("Cache element count: ", cacheCount)
+
+	imageURL := "https://" + remoteHost + r.URL.Path //+ "?" + r.URL.RawQuery
 
 	nocacheHeader := r.Header.Get(config.Cache.NoCacheHeader)
 	if config.Cache.CacheEnabled && nocacheHeader != "true" {
