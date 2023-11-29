@@ -13,9 +13,9 @@ webp:
 # Caching Settings
 cache:
   expiration_minutes: 60            # Cache expiration time in minutes
-  cleanup_interval_minutes: 120     # Cache cleanup interval in minutes
-  cache_enabled: false
+  cache_enabled: true
   nocache_header: "X-No-Cache" # You can change the header name as needed
+  lru_cache: 300000
 
 # Concurrency Settings
 concurrency:

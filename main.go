@@ -16,7 +16,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/h2non/bimg"
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -29,10 +29,10 @@ type Config struct {
 		NearLossless int  `mapstructure:"near_lossless"`
 	} `mapstructure:"webp"`
 	Cache struct {
-		ExpirationMinutes      int    `mapstructure:"expiration_minutes"`
-		CleanupIntervalMinutes int    `mapstructure:"cleanup_interval_minutes"`
-		CacheEnabled           bool   `mapstructure:"cache_enabled"`
-		NoCacheHeader          string `mapstructure:"nocache_header"`
+		ExpirationMinutes int    `mapstructure:"expiration_minutes"`
+		CacheEnabled      bool   `mapstructure:"cache_enabled"`
+		NoCacheHeader     string `mapstructure:"nocache_header"`
+		LruCache          int    `mapstructure:"lru_cache"`
 	} `mapstructure:"cache"`
 	Concurrency struct {
 		MaxGoroutines int `mapstructure:"max_goroutines"`
@@ -55,7 +55,7 @@ type ImageResult struct {
 
 var (
 	config     Config
-	imgCache   *lru.Cache
+	imgCache   *expirable.LRU[string, []byte]
 	logger     *logrus.Logger
 	httpClient *http.Client
 	semaphore  chan struct{}
@@ -73,11 +73,7 @@ func init() {
 		logrus.Fatalf("Unable to decode into struct: %v", err)
 	}
 
-	var err error
-	imgCache, err = lru.New(128) // Adjust the size as needed
-	if err != nil {
-		logrus.Fatalf("Failed to create LRU cache: %v", err)
-	}
+	imgCache = expirable.NewLRU[string, []byte](config.Cache.LruCache, nil, time.Duration(config.Cache.ExpirationMinutes)*time.Minute)
 
 	logger = logrus.New()
 	logger.Out = os.Stdout
