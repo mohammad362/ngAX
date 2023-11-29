@@ -22,8 +22,7 @@ import (
 )
 
 type Config struct {
-	HostMappings map[string]string `mapstructure:"host_mappings"`
-	WebP         struct {
+	WebP struct {
 		Quality      int  `mapstructure:"quality"`
 		Lossless     bool `mapstructure:"lossless"`
 		NearLossless int  `mapstructure:"near_lossless"`
@@ -45,7 +44,7 @@ type Config struct {
 		ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
 		ExpectContinueTimeout int `mapstructure:"expect_continue_timeout"`
 	} `mapstructure:"http_client"`
-	AllowedHosts []string `mapstructure:"allowed_hosts"`
+	AllowedHosts map[string]string `mapstructure:"allowed_hosts"`
 }
 
 type ImageResult struct {
@@ -134,8 +133,9 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Host header is missing", http.StatusBadRequest)
 		return
 	}
-
-	if !isAllowedHost(remoteHost) {
+	// Check if the remote host is allowed and get the corresponding imageURL host
+	allowedHost, exists := config.AllowedHosts[remoteHost]
+	if !exists {
 		logger.Warn("Unauthorized access attempt from host: ", remoteHost)
 		http.Error(w, "Host not allowed", http.StatusForbidden)
 		return
@@ -144,7 +144,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	cacheCount := imgCache.Len()
 	logger.Info("Cache element count: ", cacheCount)
 
-	imageURL := "https://" + remoteHost + r.URL.Path //+ "?" + r.URL.RawQuery
+	imageURL := "https://" + allowedHost + r.URL.Path //+ "?" + r.URL.RawQuery
 
 	nocacheHeader := r.Header.Get(config.Cache.NoCacheHeader)
 	if config.Cache.CacheEnabled && nocacheHeader != "true" {
