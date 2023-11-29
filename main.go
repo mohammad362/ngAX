@@ -16,7 +16,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/h2non/bimg"
-	"github.com/hashicorp/golang-lru/arc/v2"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -55,7 +55,7 @@ type ImageResult struct {
 
 var (
 	config     Config
-	imgCache   *arc.ARCCache[string, []byte]
+	imgCache   *lru.TwoQueueCache[string, []byte]
 	logger     *logrus.Logger
 	httpClient *http.Client
 	semaphore  chan struct{}
@@ -74,7 +74,7 @@ func init() {
 	}
 
 	var err error
-	imgCache, err = arc.NewARC[string, []byte](config.Cache.LruCache) // Size of the cache
+	imgCache, err = lru.New2Q[string, []byte](config.Cache.LruCache) // Size of the cache
 	if err != nil {
 		logrus.Fatalf("Failed to create ARCCache: %v", err)
 	}
@@ -153,9 +153,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Info("Cache miss for URL: ", imageURL)
-
-	cacheCount := imgCache.Len()
-	logger.Info("Cache element count: ", cacheCount)
 
 	semaphoreWaitStart := time.Now()
 	logger.Info("Waiting for semaphore slot")
