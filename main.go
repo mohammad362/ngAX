@@ -171,7 +171,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	result := <-resultChan
 	if result.Error != nil {
-		logger.WithFields(logrus.Fields{"error": result.Error.Error()}).Error("Error processing image")
+		logger.WithFields(logrus.Fields{"error": result.Error.Error(), "url": imageURL}).Error("Error processing image")
 		http.Error(w, fmt.Sprintf("Error processing image: %v", result.Error), http.StatusInternalServerError)
 		return
 	}
@@ -190,19 +190,19 @@ func processImageAsync(imageURL string, resultChan chan ImageResult) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		resultChan <- ImageResult{Error: fmt.Errorf("HTTP error from remote host: %s, url: %s", resp.Status, imageURL)}
+		resultChan <- ImageResult{Error: fmt.Errorf("HTTP error from remote host: %s", resp.Status)}
 		return
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if !isSupportedImageFormat(contentType) {
-		resultChan <- ImageResult{Error: fmt.Errorf("Unsupported image format, url: %s", imageURL)}
+		resultChan <- ImageResult{Error: fmt.Errorf("Unsupported image format")}
 		return
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		resultChan <- ImageResult{Error: fmt.Errorf("Error reading image body: %v, url: %s", err, imageURL)}
+		resultChan <- ImageResult{Error: fmt.Errorf("Error reading image body: %v", err)}
 		return
 	}
 
