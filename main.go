@@ -190,19 +190,19 @@ func processImageAsync(imageURL string, resultChan chan ImageResult) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		resultChan <- ImageResult{Error: fmt.Errorf("HTTP error from remote host: %s", resp.Status)}
+		resultChan <- ImageResult{Error: fmt.Errorf("HTTP error from remote host: %s, url: %s", resp.Status, imageURL)}
 		return
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if !isSupportedImageFormat(contentType) {
-		resultChan <- ImageResult{Error: fmt.Errorf("Unsupported image format")}
+		resultChan <- ImageResult{Error: fmt.Errorf("Unsupported image format, url: %s", imageURL)}
 		return
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		resultChan <- ImageResult{Error: fmt.Errorf("Error reading image body: %v", err)}
+		resultChan <- ImageResult{Error: fmt.Errorf("Error reading image body: %v, url: %s", err, imageURL)}
 		return
 	}
 
