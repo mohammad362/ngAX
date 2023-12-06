@@ -30,3 +30,14 @@ http_client:
   response_header_timeout: 30
   expect_continue_timeout: 1
   idle_conn_timeout: 90
+
+
+http_server:
+  bind_ip: "127.0.0.1"
+  port: 8080
+
+exporter:
+  bind_ip: "127.0.0.1"
+  port: 9080
+  user: "foo"
+  password: "bar"  
