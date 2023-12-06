@@ -5,7 +5,8 @@ services:
     image: ghcr.io/mohammad362/ngax/ngax
     container_name: image_processing
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9080:9080"
     environment:
       - GIN_MODE=release
     restart: on-failure
