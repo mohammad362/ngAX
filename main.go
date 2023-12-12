@@ -283,7 +283,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}).Info("Semaphore slot acquired")
 
 	resultChan := make(chan ImageResult)
-	go processImageAsync(imageURL, resultChan)
+	go processImageAsync(imageURL, resultChan, r)
 
 	result := <-resultChan
 	if result.Error != nil {
@@ -298,7 +298,22 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	w.Write(result.Data)
 }
 
-func processImageAsync(imageURL string, resultChan chan ImageResult) {
+func processImageAsync(imageURL string, resultChan chan ImageResult, req *http.Request) {
+
+	var quality int
+
+	// Check if x-webp-quality header is provided in the request
+	if qualityHeader := req.Header.Get("x-webp-quality"); qualityHeader != "" {
+		if q, err := strconv.Atoi(qualityHeader); err == nil {
+			quality = q
+		}
+	}
+
+	// Use default quality from config if x-webp-quality header is not provided or invalid
+	if quality == 0 {
+		quality = config.WebP.Quality
+	}
+
 	resp, err := httpClient.Get(imageURL)
 	if err != nil {
 		resultChan <- ImageResult{Error: err}
@@ -326,7 +341,7 @@ func processImageAsync(imageURL string, resultChan chan ImageResult) {
 	totalImageSizeBeforeConversion.Add(float64(len(body)))
 
 	options := bimg.Options{
-		Quality:  config.WebP.Quality,
+		Quality:  quality,
 		Lossless: config.WebP.Lossless,
 		Type:     bimg.WEBP,
 	}
